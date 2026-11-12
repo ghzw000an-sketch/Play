@@ -139,6 +139,10 @@ jobs:
           if ! grep -q 'android.permission.INTERNET' "$M"; then
             sed -i '0,/<application/s//<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' "$M"
           fi
+          # صلاحية الحفظ في الاستوديو لأندرويد 9 وأقل (gal)
+          if ! grep -q 'android.permission.WRITE_EXTERNAL_STORAGE' "$M"; then
+            sed -i '0,/<application/s//<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"\/>\n    <application/' "$M"
+          fi
           sed -i 's/android:label="[^"]*"/android:label="Naqi Pro Plus"/' "$M"
           # اسم حزمة فريد لتجنب التعارض مع أي نسخة قديمة
           for G in android/app/build.gradle.kts android/app/build.gradle; do
