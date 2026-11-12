@@ -140,6 +140,11 @@ jobs:
             sed -i '0,/<application/s//<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' "$M"
           fi
           sed -i 's/android:label="[^"]*"/android:label="Naqi Pro Plus"/' "$M"
+          # اسم حزمة فريد لتجنب التعارض مع أي نسخة قديمة
+          for G in android/app/build.gradle.kts android/app/build.gradle; do
+            [ -f "$G" ] && sed -i -E 's/applicationId( =)? *"[^"]*"/applicationId\1 "com.naqi.proplus"/' "$G"
+          done
+          grep -n applicationId android/app/build.gradle* || true
           flutter pub get
           flutter build apk --release --build-number="$NAQI_VERSION_CODE"
           echo "RAW_APK=$(pwd)/build/app/outputs/flutter-apk/app-release.apk" >> "$GITHUB_ENV"
