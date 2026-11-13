@@ -158,8 +158,12 @@ jobs:
             [ -f "$G" ] && sed -i -E 's/applicationId( =)? *"[^"]*"/applicationId\1 "com.naqi.proplus"/' "$G"
           done
           grep -n applicationId android/app/build.gradle* || true
+          # إضافة المحرك الأصلي (yt-dlp + FFmpeg) والمشاركة والإشعار إن وُجد مجلد native داخل المشروع
+          if [ -f native/apply_native.py ]; then
+            python3 native/apply_native.py .
+          fi
           flutter pub get
-          flutter build apk --release --build-number="$NAQI_VERSION_CODE"
+          flutter build apk --release --no-shrink --target-platform android-arm64,android-arm --build-number="$NAQI_VERSION_CODE"
           echo "RAW_APK=$(pwd)/build/app/outputs/flutter-apk/app-release.apk" >> "$GITHUB_ENV"
 
       - name: Build Capacitor
