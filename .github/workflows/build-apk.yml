@@ -1,3 +1,4 @@
+
 name: Build APK
 
 # ضع هذا الملف في: .github/workflows/build-apk.yml
@@ -35,7 +36,6 @@ jobs:
       # ---------- 1) اختيار ملف ZIP ----------
       - name: Pick the newest zip (name does not matter)
         run: |
-          # أحدث ملف zip أُضيف أو عُدّل في تاريخ المستودع (الاسم لا يهم، والمحذوف يُتجاهل)
           ZIP=""
           while IFS= read -r f; do
             if [ -n "$f" ] && [ -f "$f" ]; then ZIP="$f"; break; fi
@@ -126,7 +126,6 @@ jobs:
             }
           }
           GRADLE
-          # تعطيل فحص lint الحرج (ينهار بسبب خلل في أداة lint مع مكتبة video_player)
           cat > ~/.gradle/init.d/nolint.gradle <<'GRADLE'
           allprojects {
             afterEvaluate {
@@ -148,17 +147,14 @@ jobs:
           if ! grep -q 'android.permission.INTERNET' "$M"; then
             sed -i '0,/<application/s//<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' "$M"
           fi
-          # صلاحية الحفظ في الاستوديو لأندرويد 9 وأقل (gal)
           if ! grep -q 'android.permission.WRITE_EXTERNAL_STORAGE' "$M"; then
             sed -i '0,/<application/s//<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"\/>\n    <application/' "$M"
           fi
           sed -i 's/android:label="[^"]*"/android:label="Naqi Pro Plus"/' "$M"
-          # اسم حزمة فريد لتجنب التعارض مع أي نسخة قديمة
           for G in android/app/build.gradle.kts android/app/build.gradle; do
             [ -f "$G" ] && sed -i -E 's/applicationId( =)? *"[^"]*"/applicationId\1 "com.naqi.proplus"/' "$G"
           done
           grep -n applicationId android/app/build.gradle* || true
-          # إضافة المحرك الأصلي (yt-dlp + FFmpeg) والمشاركة والإشعار إن وُجد مجلد native داخل المشروع
           if [ -f native/apply_native.py ]; then
             python3 native/apply_native.py .
           fi
@@ -203,13 +199,18 @@ jobs:
           "$BT/zipalign" -f -p 4 "$RAW_APK" "$RUNNER_TEMP/aligned.apk"
           mkdir -p out
           "$BT/apksigner" sign --ks "$KS_PATH" --ks-pass "pass:$KS_PASS" \
+            --min-sdk-version 21 \
+            --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
             --out "$OUT" "$RUNNER_TEMP/aligned.apk"
           "$BT/apksigner" verify --verbose "$OUT"
           "$BT/zipalign" -c -p 4 "$OUT"
           unzip -tq "$OUT"
           echo "--- APK info ---"
           ls -lh out/
-          "$BT/aapt" dump badging "$OUT" | grep -E "^package|sdkVersion|targetSdkVersion|application-label:" || true
+          "$BT/aapt" dump badging "$OUT" | grep -E "^package|sdkVersion|targetSdkVersion|application-label:|native-code" || true
+          "$BT/apksigner" verify --print-certs "$OUT" | head -5
+          echo "SHA256: $(sha256sum "$OUT" | cut -d' ' -f1)"
+          echo "SIZE: $(stat -c%s "$OUT")"
           echo "APK_FILE=$OUT" >> "$GITHUB_ENV"
 
       # ---------- 7) النشر ----------
@@ -225,3 +226,6 @@ jobs:
           echo "### APK ready" >> "$GITHUB_STEP_SUMMARY"
           echo "$URL" >> "$GITHUB_STEP_SUMMARY"
           echo "Size: $(stat -c%s "$APK_FILE") bytes" >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA256: $(sha256sum "$APK_FILE" | cut -d' ' -f1)" >> "$GITHUB_STEP_SUMMARY"
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+          "$BT/aapt" dump badging "$APK_FILE" | grep -E "sdkVersion|native-code" >> "$GITHUB_STEP_SUMMARY" || true
