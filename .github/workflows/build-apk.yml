@@ -1,5 +1,10 @@
 name: Build APK
 
+# ضع هذا الملف في: .github/workflows/build-apk.yml
+# ثم ارفع أي ملف ZIP إلى المستودع وسيبدأ البناء تلقائيًا.
+# التنزيل: من تبويب Releases (ملف app-build-N.apk) وليس من Actions Artifacts.
+# عند فشل البناء: افتح صفحة التشغيل (Summary) وسترى سبب الخطأ الحقيقي في الأعلى.
+
 on:
   push:
     paths:
@@ -28,6 +33,7 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # ---------- 1) اختيار ملف ZIP ----------
       - name: Pick the newest zip (name does not matter)
         run: |
           ZIP=""
@@ -41,6 +47,7 @@ jobs:
           echo "Using: $ZIP"
           echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
 
+      # ---------- 2) فك الضغط واكتشاف نوع المشروع ----------
       - name: Unzip and detect project type
         id: detect
         run: |
@@ -79,6 +86,8 @@ jobs:
         with:
           node-version: '20'
 
+      # ---------- 3) مفتاح توقيع ثابت ----------
+      # تنبيه: المفتاح وكلمته يُحفظان في المستودع، لذا اجعله Private.
       - name: Prepare permanent signing key
         run: |
           if [ ! -f .signing/release.jks ]; then
@@ -97,6 +106,7 @@ jobs:
           echo "KS_PATH=$GITHUB_WORKSPACE/.signing/release.jks" >> "$GITHUB_ENV"
           echo "KS_PASS=$(cat .signing/pass.txt)" >> "$GITHUB_ENV"
 
+      # ---------- 4) رقم إصدار يزيد دائمًا ----------
       - name: Version code (always increasing)
         run: |
           VC=$((GITHUB_RUN_NUMBER + 100))
@@ -124,6 +134,7 @@ jobs:
           }
           GRADLE
 
+      # ---------- 5) البناء ----------
       - name: Prepare Flutter project
         if: steps.detect.outputs.type == 'flutter'
         working-directory: ${{ env.APP_DIR }}
@@ -132,6 +143,7 @@ jobs:
           if [ ! -d android ]; then
             flutter create . --platforms=android --project-name "$NAME"
           fi
+          rm -rf test
           M=android/app/src/main/AndroidManifest.xml
           if ! grep -q 'android.permission.INTERNET' "$M"; then
             sed -i '0,/<application/s//<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' "$M"
@@ -145,10 +157,12 @@ jobs:
           done
           grep -n applicationId android/app/build.gradle* || true
 
+          # توافق مع AGP 9 / Flutter الحديث: إضافات قديمة (share_plus, gal, local_auth...) تحتاج الوضع القديم
           GP=android/gradle.properties
           touch "$GP"
           sed -i '/^android\.newDsl=/d;/^android\.builtInKotlin=/d' "$GP"
           printf '\nandroid.newDsl=false\nandroid.builtInKotlin=false\n' >> "$GP"
+          # ذاكرة آمنة لمشغّل GitHub (7GB في المستودعات الخاصة)
           sed -i '/^org\.gradle\.jvmargs=/d' "$GP"
           echo 'org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=1G -XX:+HeapDumpOnOutOfMemoryError' >> "$GP"
           cat "$GP"
@@ -159,6 +173,7 @@ jobs:
           flutter --version
           flutter pub get
 
+      # فحص Dart سريع: يُظهر أخطاء الكود الحقيقية (غير مُوقِف للبناء)
       - name: Analyze Dart (shows real code errors)
         if: steps.detect.outputs.type == 'flutter'
         working-directory: ${{ env.APP_DIR }}
@@ -221,6 +236,7 @@ jobs:
           ./gradlew assembleRelease --no-daemon
           echo "RAW_APK=$(find . -path '*outputs/apk/release*' -name '*.apk' | head -n 1 | xargs realpath)" >> "$GITHUB_ENV"
 
+      # ---------- 6) التحقق من الناتج ثم المحاذاة والتوقيع ----------
       - name: Verify raw APK exists
         run: |
           [ -n "$RAW_APK" ] && [ -f "$RAW_APK" ] || { echo "APK not found: $RAW_APK"; exit 1; }
@@ -242,6 +258,7 @@ jobs:
           "$BT/apksigner" verify --verbose "$OUT"
           "$BT/zipalign" -c -p 4 "$OUT"
           unzip -tq "$OUT"
+          echo "--- APK info ---"
           ls -lh out/
           "$BT/aapt" dump badging "$OUT" | grep -E "^package|sdkVersion|targetSdkVersion|application-label:|native-code" || true
           "$BT/apksigner" verify --print-certs "$OUT" | head -5
@@ -249,6 +266,7 @@ jobs:
           echo "SIZE: $(stat -c%s "$OUT")"
           echo "APK_FILE=$OUT" >> "$GITHUB_ENV"
 
+      # ---------- 7) النشر ----------
       - name: Publish APK as a Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -262,3 +280,5 @@ jobs:
           echo "$URL" >> "$GITHUB_STEP_SUMMARY"
           echo "Size: $(stat -c%s "$APK_FILE") bytes" >> "$GITHUB_STEP_SUMMARY"
           echo "SHA256: $(sha256sum "$APK_FILE" | cut -d' ' -f1)" >> "$GITHUB_STEP_SUMMARY"
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+          "$BT/aapt" dump badging "$APK_FILE" | grep -E "sdkVersion|native-code" >> "$GITHUB_STEP_SUMMARY" || true
