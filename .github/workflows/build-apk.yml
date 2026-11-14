@@ -95,7 +95,7 @@ jobs:
             PASS="$(openssl rand -hex 16)"
             keytool -genkeypair -keystore .signing/release.jks -alias release \
               -keyalg RSA -keysize 2048 -validity 36500 \
-              -storepass "$PASS" -keypass "$PASS" -dname "CN=Naqi App, O=Naqi, C=IQ"
+              -storepass "$PASS" -keypass "$PASS" -dname "CN=Sanad App, O=Sanad, C=IQ"
             echo "$PASS" > .signing/pass.txt
             git config user.name "github-actions"
             git config user.email "actions@github.com"
@@ -110,7 +110,7 @@ jobs:
       - name: Version code (always increasing)
         run: |
           VC=$((GITHUB_RUN_NUMBER + 100))
-          echo "NAQI_VERSION_CODE=$VC" >> "$GITHUB_ENV"
+          echo "SANAD_VERSION_CODE=$VC" >> "$GITHUB_ENV"
           mkdir -p ~/.gradle/init.d
           cat > ~/.gradle/init.d/versioncode.gradle <<'GRADLE'
           allprojects {
@@ -119,7 +119,7 @@ jobs:
               if (ac != null) {
                 ac.onVariants(ac.selector().all(), { v ->
                   v.outputs.each { o ->
-                    o.versionCode.set(Integer.parseInt(System.getenv('NAQI_VERSION_CODE')))
+                    o.versionCode.set(Integer.parseInt(System.getenv('SANAD_VERSION_CODE')))
                   }
                 })
               }
@@ -151,9 +151,9 @@ jobs:
           if ! grep -q 'android.permission.WRITE_EXTERNAL_STORAGE' "$M"; then
             sed -i '0,/<application/s//<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"\/>\n    <application/' "$M"
           fi
-          sed -i 's/android:label="[^"]*"/android:label="Naqi Pro Plus"/' "$M"
+          sed -i 's/android:label="[^"]*"/android:label="سند"/' "$M"
           for G in android/app/build.gradle.kts android/app/build.gradle; do
-            [ -f "$G" ] && sed -i -E 's/applicationId( =)? *"[^"]*"/applicationId\1 "com.naqi.proplus"/' "$G"
+            [ -f "$G" ] && sed -i -E 's/applicationId( =)? *"[^"]*"/applicationId\1 "com.sanad.proplus"/' "$G"
           done
           grep -n applicationId android/app/build.gradle* || true
 
@@ -196,7 +196,7 @@ jobs:
         working-directory: ${{ env.APP_DIR }}
         run: |
           set +e
-          flutter build apk --release --no-shrink --target-platform android-arm64,android-arm --build-number="$NAQI_VERSION_CODE" 2>&1 | tee "$RUNNER_TEMP/build.log"
+          flutter build apk --release --no-shrink --target-platform android-arm64 --build-number="$SANAD_VERSION_CODE" 2>&1 | tee "$RUNNER_TEMP/build.log"
           RC=${PIPESTATUS[0]}
           if [ "$RC" -ne 0 ]; then
             PAT='\.dart:[0-9]+:[0-9]+: Error|^e: |error:|Error:|What went wrong|Caused by|Execution failed|Could not |Unresolved reference|cannot be cast|Failed to apply plugin|OutOfMemory|Daemon disappeared|Compilation failed|Target .* failed'
@@ -274,7 +274,7 @@ jobs:
           TAG="build-${GITHUB_RUN_NUMBER}"
           gh release create "$TAG" "$APK_FILE" \
             --title "Build ${GITHUB_RUN_NUMBER}" \
-            --notes "versionCode ${NAQI_VERSION_CODE}"
+            --notes "versionCode ${SANAD_VERSION_CODE}"
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/app-build-${GITHUB_RUN_NUMBER}.apk"
           echo "### APK ready" >> "$GITHUB_STEP_SUMMARY"
           echo "$URL" >> "$GITHUB_STEP_SUMMARY"
